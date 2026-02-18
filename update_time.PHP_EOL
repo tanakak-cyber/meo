@@ -1,0 +1,22 @@
+
+   InvalidArgumentException 
+
+  Unexpected end of input
+
+  at vendor\psy\psysh\src\Shell.php:1028
+    [90m1024[0m[90m▕ [0m
+    [90m1025[0m[90m▕ [0m[35;1m        if (![0m[39;1m$this[0m[35;1m->[0m[39;1mhasValidCode[0m[35;1m()) {[0m
+    [90m1026[0m[90m▕ [0m[35;1m            [0m[39;1m$this[0m[35;1m->[0m[39;1mpopCodeStack[0m[35;1m();[0m
+    [90m1027[0m[90m▕ [0m
+[31;1m  ➜ [0m[3;1m1028[0m[90m▕ [0m[35;1m            throw new \InvalidArgumentException([0m[37m'Unexpected end of input'[0m[35;1m);[0m
+    [90m1029[0m[90m▕ [0m[35;1m        }[0m
+    [90m1030[0m[90m▕ [0m[35;1m    }[0m
+    [90m1031[0m[90m▕ [0m
+    [90m1032[0m[90m▕ [0m[35;1m    [0m[90;3m/**[0m
+
+  1   vendor\psy\psysh\src\Shell.php:1562
+      Psy\Shell::setCode("try{ $r=\App\Models\Review::where('shop_id',1)->latest('id')->first(); if(r){")
+
+  2   vendor\laravel\tinker\src\Console\TinkerCommand.php:76
+      Psy\Shell::execute("try{ $r=\App\Models\Review::where('shop_id',1)->latest('id')->first(); if(r){")
+

@@ -1,0 +1,26 @@
+{
+    "codeToName": [],
+    "isUnicode": true,
+    "FontName": "NotoSansJP-Regular",
+    "FullName": "Noto Sans JP Regular",
+    "FamilyName": "Noto Sans JP",
+    "Weight": "Medium",
+    "ItalicAngle": "0",
+    "IsFixedPitch": "false",
+    "CharacterSet": "ExtendedRoman",
+    "FontBBox": [
+        "0",
+        "0",
+        "1000",
+        "1000"
+    ],
+    "CapHeight": "700",
+    "XHeight": "500",
+    "Ascender": "800",
+    "Descender": "-200",
+    "StdHW": "50",
+    "StdVW": "50",
+    "CIDtoGID_Compressed": true,
+    "CIDtoGID": "eJztwTEBAAAAwqD1T+1hDaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAbgAeAAE=",
+    "_version_": 6
+}
