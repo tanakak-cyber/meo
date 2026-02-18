@@ -21,6 +21,8 @@
 /storage/logs
 /storage/framework
 /storage/puppeteer-runs
+/storage/puppeteer-profile
+/storage/puppeteer
 /vendor
 /bootstrap/cache/*.php
 Homestead.json
