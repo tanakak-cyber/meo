@@ -218,6 +218,7 @@ class ShopController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:shops,name',
             'plan_id' => 'nullable|exists:plans,id',
+'blog_option' => 'nullable|boolean',
             'sales_person_id' => 'nullable|exists:sales_persons,id',
             'operation_person_id' => 'nullable|exists:operation_persons,id',
             'shop_contact_name' => 'nullable|string|max:255',
@@ -228,7 +229,6 @@ class ShopController extends Controller
             'referral_fee' => 'nullable|numeric|min:0|required_if:contract_type,referral',
             'contract_date' => 'nullable|date',
             'contract_end_date' => 'nullable|date|after_or_equal:contract_date',
-            'blog_option' => 'boolean',
             'integration_type' => 'nullable|in:blog,instagram',
             'blog_list_url' => 'nullable|url|max:255',
             'blog_link_selector' => 'nullable|string|max:255',
@@ -254,8 +254,12 @@ class ShopController extends Controller
             'report_email_3' => 'nullable|email|max:255',
             'report_email_4' => 'nullable|email|max:255',
             'report_email_5' => 'nullable|email|max:255',
+'rank_lat' => 'nullable|numeric|between:-90,90',
+'rank_lng' => 'nullable|numeric|between:-180,180',
         ]);
-
+$validated['wp_post_enabled'] = $request->boolean('wp_post_enabled');
+$validated['blog_option'] = (bool) $request->input('blog_option', 0);
+$validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
         // review_monthly_target, photo_monthly_target, video_monthly_target が未設定の場合は null を明示的に設定
         if (!isset($validated['review_monthly_target'])) {
             $validated['review_monthly_target'] = null;
@@ -413,8 +417,8 @@ class ShopController extends Controller
             'referral_fee' => 'nullable|numeric|min:0|required_if:contract_type,referral',
             'contract_date' => 'nullable|date',
             'contract_end_date' => 'nullable|date|after_or_equal:contract_date',
-            'blog_option' => 'boolean',
             'integration_type' => 'nullable|in:blog,instagram',
+'blog_option' => 'nullable|boolean',
             'blog_list_url' => 'nullable|url|max:255',
             'blog_link_selector' => 'nullable|string|max:255',
             'blog_item_selector' => 'nullable|string|max:255',
@@ -447,7 +451,12 @@ class ShopController extends Controller
             'report_email_3' => 'nullable|email|max:255',
             'report_email_4' => 'nullable|email|max:255',
             'report_email_5' => 'nullable|email|max:255',
+'rank_lat' => 'nullable|numeric|between:-90,90',
+'rank_lng' => 'nullable|numeric|between:-180,180',
         ]);
+// チェックボックスは未送信時に消えるので強制確定
+$validated['blog_option'] = (bool) $request->input('blog_option', 0);
+$validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
 
         Log::info('SHOP_UPDATE_VALIDATION_PASSED', [
             'shop_id' => $shop->id,
@@ -475,11 +484,6 @@ class ShopController extends Controller
         // blog_fallback_image_url が空の場合は null を設定
         if (isset($validated['blog_fallback_image_url']) && empty(trim($validated['blog_fallback_image_url']))) {
             $validated['blog_fallback_image_url'] = null;
-        }
-
-        // wp_post_enabled が未設定の場合は false を設定
-        if (!isset($validated['wp_post_enabled'])) {
-            $validated['wp_post_enabled'] = false;
         }
 
         // wp_post_enabled が false の場合、wp_post_type と wp_post_status を null に設定

@@ -217,9 +217,10 @@ class ReportController extends Controller
             session(['report_period_to' => $requestTo]);
         }
         
-        // セッションから取得、なければデフォルト値（前月1か月分）
-        $defaultFrom = Carbon::now('Asia/Tokyo')->subMonth()->startOfMonth()->format('Y-m-d');
-        $defaultTo = Carbon::now('Asia/Tokyo')->subMonth()->endOfMonth()->format('Y-m-d');
+        // デフォルト期間：当月1日～当月末
+$defaultFrom = Carbon::now('Asia/Tokyo')->startOfMonth()->format('Y-m-d');
+$defaultTo = Carbon::now('Asia/Tokyo')->endOfMonth()->format('Y-m-d');
+
         
         $from = $requestFrom ?? session('report_period_from', $defaultFrom);
         $to = $requestTo ?? session('report_period_to', $defaultTo);

@@ -1,3 +1,7 @@
+// ===== MEO定点観測座標（東京・都庁）=====
+const FIXED_LAT = 35.6896;
+const FIXED_LNG = 139.6917;
+
 console.log("🔥 REAL WORKER LOADED 🔥", __filename);
 console.log("ARGV", process.argv);
 console.log("FILE", __filename);
@@ -111,7 +115,7 @@ async function fetchAndLockJob() {
             });
             
             // 店舗情報を取得
-            const shopStmt = db.prepare('SELECT name FROM shops WHERE id = ?');
+            const shopStmt = db.prepare('SELECT name, rank_lat, rank_lng FROM shops WHERE id = ?');
             const shopRows = shopStmt.all(job.shop_id);
             
             if (shopRows.length === 0) {
@@ -121,6 +125,10 @@ async function fetchAndLockJob() {
             }
             
             const shopName = shopRows[0].name;
+const rankLat = shopRows[0].rank_lat || FIXED_LAT;
+const rankLng = shopRows[0].rank_lng || FIXED_LNG;
+console.log("📍 使用座標:", rankLat, rankLng);
+
             
             // キーワードを取得（meo_keyword_idから直接取得）
             const keywordStmt = db.prepare('SELECT id, keyword FROM meo_keywords WHERE id = ?');
@@ -170,6 +178,8 @@ async function fetchAndLockJob() {
                 started_at: now,
                 requested_by_type: job.requested_by_type,
                 requested_by_id: job.requested_by_id,
+rankLat: rankLat,
+rankLng: rankLng,
             };
             
         } else {
@@ -216,7 +226,7 @@ async function fetchAndLockJob() {
             
             // 店舗情報を取得
             const [shopRows] = await connection.execute(
-                `SELECT name FROM shops WHERE id = ?`,
+                `SELECT name, rank_lat, rank_lng FROM shops WHERE id = ?`,
                 [job.shop_id]
             );
             
@@ -227,6 +237,10 @@ async function fetchAndLockJob() {
             }
             
             const shopName = shopRows[0].name;
+const rankLat = shopRows[0].rank_lat || FIXED_LAT;
+const rankLng = shopRows[0].rank_lng || FIXED_LNG;
+console.log("📍 使用座標(MySQL):", rankLat, rankLng);
+
             
             // キーワードを取得（meo_keyword_idから直接取得）
             const [keywordRows] = await connection.execute(
@@ -268,17 +282,19 @@ async function fetchAndLockJob() {
             });
             
             return {
-                id: job.id,
-                shop_id: job.shop_id,
-                shop_name: shopName,
-                target_date: job.target_date,
-                keyword: keyword,
-                keyword_id: keywordRows[0].id,
-                status: 'running',
-                started_at: now,
-                requested_by_type: job.requested_by_type,
-                requested_by_id: job.requested_by_id,
-            };
+    id: job.id,
+    shop_id: job.shop_id,
+    shop_name: shopName,
+    target_date: job.target_date,
+    keyword: keyword,
+    keyword_id: keywordRows[0].id,
+    status: 'running',
+    started_at: now,
+    requested_by_type: job.requested_by_type,
+    requested_by_id: job.requested_by_id,
+    rankLat: parseFloat(rankLat),
+    rankLng: parseFloat(rankLng),
+};
         }
         
     } catch (error) {
@@ -511,7 +527,7 @@ async function saveRankAndCompleteJob(job, rank, errorMessage = null) {
 /**
  * Google Maps検索で順位を取得
  */
-async function fetchGoogleMapsRank(keyword, shopName) {
+async function fetchGoogleMapsRank(keyword, shopName, rankLat, rankLng) {
     let browser = null;
     let page = null;
     
@@ -521,7 +537,7 @@ async function fetchGoogleMapsRank(keyword, shopName) {
         
         // ⑤ chromium.launch() の直前
         const launchOptions = {
-            headless: false,
+            headless: true,
             slowMo: 50, // 人間らしい動作速度
             args: [
                 "--no-sandbox",
@@ -539,16 +555,16 @@ async function fetchGoogleMapsRank(keyword, shopName) {
         // ⑥ browser が返った直後
         console.log("BROWSER OK");
         
-        // ⑦ newContext() の直前と直後
-        console.log("CONTEXT CREATE");
-        // 実ブラウザのChromeに近いUser-Agent
-        const context = await browser.newContext({
-            ignoreHTTPSErrors: true,
-            viewport: { width: 1280, height: 800 },
-            locale: 'ja-JP',
-            timezoneId: 'Asia/Tokyo',
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        });
+        // ⑦ 
+const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    viewport: { width: 1280, height: 800 },
+    locale: 'ja-JP',
+    timezoneId: 'Asia/Tokyo',
+    geolocation: { latitude: rankLat, longitude: rankLng },
+    permissions: ['geolocation'],
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+});
         console.log("CONTEXT OK");
         
         // ⑧ page.newPage() の前後
@@ -558,7 +574,11 @@ async function fetchGoogleMapsRank(keyword, shopName) {
         console.log('🌐 ブラウザを起動しました（人間のChromeモード）');
         
         // Google Maps検索URL
-        const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(keyword)}`;
+        const lat = (rankLat !== undefined && rankLat !== null) ? rankLat : 35.6896;
+const lng = (rankLng !== undefined && rankLng !== null) ? rankLng : 139.6917;
+
+const searchUrl = `https://www.google.com/maps/search/${encodeURIComponent(keyword)}/@${lat},${lng},15z?hl=ja&gl=jp`;
+
         console.log('🔍 検索URL:', searchUrl);
         console.log('🔍 キーワード:', keyword);
         console.log('🏪 店舗名:', shopName);
@@ -948,7 +968,7 @@ async function processOneJob() {
         let searchError = null;
         
         try {
-            rank = await fetchGoogleMapsRank(job.keyword, job.shop_name);
+            rank = await fetchGoogleMapsRank(job.keyword, job.shop_name, job.rankLat, job.rankLng);
             
             if (rank !== null) {
                 console.log('RANK:', rank);
