@@ -51,15 +51,16 @@ class CrawlAndPostInstagram extends Command
      */
     public function handle()
     {
+\Log::info('INSTAGRAM_COMMAND_STARTED');
         $this->info('Instagram自動クロール・投稿処理を開始します...');
         $this->info('現在時刻（日本時間）: ' . Carbon::now('Asia/Tokyo')->format('Y-m-d H:i:s'));
 
         // integration_type='instagram' の店舗を取得
         // ブログクロールと同じセレクタを使用（blog_list_url, blog_link_selector, blog_date_selector）
         $shops = Shop::where('integration_type', 'instagram')
-            ->whereNotNull('blog_list_url')
-            ->whereNotNull('blog_link_selector')
-            ->whereNotNull('blog_date_selector')
+    ->whereNotNull('instagram_crawl_time')
+    ->whereNotNull('blog_list_url')
+    ->whereNotNull('instagram_item_selector')
             ->get();
 
         $this->info("対象店舗数: {$shops->count()}件");

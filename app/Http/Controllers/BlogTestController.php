@@ -68,11 +68,12 @@ class BlogTestController extends Controller
             $articles = $this->crawlWithHtml($shop);
 
             if (empty($articles)) {
-                Log::error('BLOG_TEST_NO_ARTICLES_FOUND', [
-                    'shop_id' => $shop->id,
-                    'url' => $shop->blog_list_url,
-                    'selector' => $shop->blog_link_selector,
-                ]);
+               Log::error('BLOG_TEST_NO_ARTICLES_FOUND', [
+    'shop_id' => $shop->id,
+    'url' => $shop->blog_list_url,
+    'item_selector' => $itemSelector,
+    'link_selector' => $linkSelector,
+]);
                 return response()->json([
                     'status' => 'error',
                     'message' => '記事が見つかりませんでした',
