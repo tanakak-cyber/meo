@@ -28,12 +28,21 @@ class ReportController extends Controller
 {
     public function index(Request $request)
     {
+\Log::info('REPORT_INDEX_AUTH_CHECK', [
+    'auth_user' => \Illuminate\Support\Facades\Auth::user(),
+    'auth_id' => \Illuminate\Support\Facades\Auth::id(),
+    'session_operator_id' => session('operator_id'),
+    'session_id' => session()->getId(),
+]);
         // オペレーターの場合は担当店舗のみをフィルタ（operator_shopsテーブルを使用）
         $user = Auth::user();
         $operatorId = session('operator_id');
         $status = null;
         
-        if (!$user || !$user->is_admin) {
+        
+
+
+if (!$user || !$user->is_admin) {
             // オペレーターの場合
             if ($user && !$user->is_admin && $user->operator_id) {
                 $operatorId = $user->operator_id;
@@ -170,17 +179,18 @@ class ReportController extends Controller
 
         $shop = Shop::findOrFail($shopId);
         
-        // 顧客閲覧範囲による権限チェック
-        $user = Auth::user();
-        if ($user && $user->is_admin) {
-            if ($user->customer_scope === 'own' && $shop->created_by !== $user->id) {
-                abort(403, 'この店舗を閲覧する権限がありません。');
-            }
-        } elseif ($user && !$user->is_admin) {
-            if ($shop->created_by !== $user->id) {
-                abort(403, 'この店舗を閲覧する権限がありません。');
-            }
+        // 顧客閲覧範囲による権限チェック（UI設定と統一）
+$user = Auth::user();
+
+if ($user) {
+    // 「自分の顧客のみ」のときだけ制限
+    if ($user->customer_scope === 'own') {
+        if ($shop->created_by !== $user->id) {
+            abort(403, 'この店舗を閲覧する権限がありません。');
         }
+    }
+    // customer_scope = all の場合は全店舗閲覧可能（重要）
+}
         
         $googleService = new GoogleBusinessProfileService();
         
@@ -523,6 +533,25 @@ $defaultTo = Carbon::now('Asia/Tokyo')->endOfMonth()->format('Y-m-d');
 
     public function syncAll(Request $request)
     {
+        // ★緊急修正：オペレーター最優先判定（ログアウト防止）
+        $sessionOperatorId = session('operator_id');
+        $user = \Illuminate\Support\Facades\Auth::user();
+
+        // オペレーターでログインしている場合はAuth::user()がnullでも正常扱い
+        if ($sessionOperatorId) {
+            $operatorId = (int) $sessionOperatorId;
+        } else {
+            $operatorId = $operatorId ?? session('operator_id');
+        }
+
+   // ★追加（これが本命）
+    $isOperator = !empty($operatorId);
+
+        // 完全未ログインのみログイン画面へ
+        if (!$operatorId && !$user) {
+            return redirect('/operator/login');
+        }
+        // ★ここまで追加（既存コードは一切削除しない）
         $shopId = $request->input('shop_id');
         $startDate = $request->input('start_date');
         $endDate = $request->input('end_date');
@@ -543,21 +572,46 @@ $defaultTo = Carbon::now('Asia/Tokyo')->endOfMonth()->format('Y-m-d');
         
         if ($startDateCarbon && $endDateCarbon && $startDateCarbon->gt($endDateCarbon)) {
             $routeName = session('operator_id') ? 'operator.reports.index' : 'reports.index';
-            return redirect()->route($routeName)
-                ->with('error', '開始日が終了日より後になっています。');
+            return back()->with('error', '開始日が終了日より後になっています。');
         }
         
         // オペレーション担当で絞り込み
         $operationPersonId = $request->input('operation_person_id');
         
-        // operator_id を取得
-        $user = Auth::user();
+// operator_id を取得（customer_scope対応）
+$user = Auth::user();
+
+if ($isOperator) {
+    $user = null; // オペレーター時はAuthロジックを無効化
+}
+
+// customer_scopeを安全に正規化（nullは'all'扱い）
+$customerScope = $user ? strtolower(trim($user->customer_scope ?? 'own')) : 'operator';
+$isAdmin = (bool) ($user->is_admin ?? false);
+
+// customer_scope='all' は管理者扱い
+$shouldTreatAsAdmin = $isAdmin;
+
+$operatorId = $operatorId ?? session('operator_id');
+
+if (!$shouldTreatAsAdmin) {
+    // オペレーターのみ operator_id を使う
+    if ($user && $user->operator_id) {
+        $operatorId = $user->operator_id;
+    } elseif (session('operator_id')) {
         $operatorId = session('operator_id');
-        if (!$user || !$user->is_admin) {
-            if ($user && !$user->is_admin && $user->operator_id) {
-                $operatorId = $user->operator_id;
-            }
-        }
+    }
+}
+
+// デバッグ（これが出ればcontroller到達してる）
+\Log::info('REPORT_SYNCALL_SCOPE', [
+    'user_id' => $user->id ?? null,
+    'is_admin' => $isAdmin,
+    'customer_scope' => $customerScope,
+    'should_treat_as_admin' => $shouldTreatAsAdmin,
+    'operator_id_used' => $operatorId,
+]);
+
         
         if ($shopId === 'all') {
             // 全店舗同期の場合、契約中の店舗のみを取得
@@ -566,19 +620,24 @@ $defaultTo = Carbon::now('Asia/Tokyo')->endOfMonth()->format('Y-m-d');
                     $query->whereNull('contract_end_date')
                           ->orWhere('contract_end_date', '>=', $today);
                 });
-            
-            // 顧客閲覧範囲によるフィルタリング
-            if ($user && $user->is_admin) {
-                if ($user->customer_scope === 'own') {
-                    $shopQuery->where('created_by', $user->id);
-                }
-                // 'all' の場合はフィルタリングなし
-            } else {
-                // 一般ユーザー（非管理者）の場合は自分の顧客のみ
-                if ($user) {
-                    $shopQuery->where('created_by', $user->id);
-                }
-            }
+
+// ★最優先：オペレーターの場合は担当店舗のみに強制制限（超重要）
+if (!empty($operatorId)) {
+    $shopQuery->where(function ($q) use ($operatorId) {
+        $q->where('operation_person_id', $operatorId)
+          ->orWhereIn('id', \App\Models\OperatorShop::where('operator_id', $operatorId)->pluck('shop_id'));
+    });
+}            
+
+// 顧客閲覧範囲によるフィルタリング（customer_scope優先）
+if ($user) {
+    $customerScope = $user ? strtolower(trim($user->customer_scope ?? 'own')) : 'operator';
+    if ($customerScope === 'own') {
+        $shopQuery->where('created_by', $user->id);
+    }
+    // 'all' の場合はフィルタリングなし
+}
+
             
             // オペレーターがログインしている場合は、自分の担当店舗のみ
             if ($operatorId) {
@@ -623,8 +682,7 @@ $defaultTo = Carbon::now('Asia/Tokyo')->endOfMonth()->format('Y-m-d');
                 
                 if (!$isAssigned) {
                     $routeName = $operatorId ? 'operator.reports.index' : 'reports.index';
-                    return redirect()->route($routeName)
-                        ->with('error', 'この店舗を同期する権限がありません。');
+                    return back()->with('error', 'この店舗を同期する権限がありません。');
                 }
             }
             
@@ -852,6 +910,11 @@ $defaultTo = Carbon::now('Asia/Tokyo')->endOfMonth()->format('Y-m-d');
         }
     }
 
+
+
+
+
+
     public function sync(Request $request, $shopId)
     {
         // 経路の可視化ログ
@@ -920,24 +983,60 @@ $defaultTo = Carbon::now('Asia/Tokyo')->endOfMonth()->format('Y-m-d');
             }
         }
         
-        // operator_id を取得（同期実行者の記録用）
+
+
+
+
+
+
+
+// operator_id を取得（customer_scope対応・統一権限版）
+$user = Auth::user();
+
+// customer_scopeを安全に正規化（null・空白・大文字対策）
+$customerScope = $user ? strtolower(trim($user->customer_scope ?? 'all')) : 'all';
+$isAdmin = (bool) ($user->is_admin ?? false);
+
+// customer_scope = 'all' は管理者扱い（最重要）
+$shouldTreatAsAdmin = $isAdmin || ($customerScope === 'all');
+
+// デバッグログ（/reports用）
+\Log::info('REPORT_SYNC_PERMISSION_CHECK', [
+    'user_id' => $user->id ?? null,
+    'is_admin' => $isAdmin,
+    'customer_scope' => $customerScope,
+    'should_treat_as_admin' => $shouldTreatAsAdmin,
+    'session_operator_id' => session('operator_id'),
+]);
+
+if ($shouldTreatAsAdmin) {
+    // 管理者 or 全顧客スコープ → 全店舗同期可能
+   $operatorId = $operatorId ?? session('operator_id');
+} else {
+    // オペレーターは自分のoperator_id必須
+    if ($user && $user->operator_id) {
+        $operatorId = $user->operator_id;
+    } else {
         $operatorId = session('operator_id');
-        if (!$user || !$user->is_admin) {
-            // オペレーターの場合
-            if ($user && !$user->is_admin && $user->operator_id) {
-                $operatorId = $user->operator_id;
-            }
-            if ($operatorId) {
-                // オペレーターの場合は自分の担当店舗のみアクセス可能（operator_shopsテーブルを使用）
-                $isAssigned = \App\Models\OperatorShop::where('operator_id', $operatorId)
-                    ->where('shop_id', $shop->id)
-                    ->exists();
-                
-                if (!$isAssigned) {
-                    abort(403, 'この店舗を同期する権限がありません。');
-                }
-            }
+    }
+
+    // 担当店舗のみアクセス可能
+    if ($operatorId) {
+        $isAssigned = \App\Models\OperatorShop::where('operator_id', $operatorId)
+            ->where('shop_id', $shop->id)
+            ->exists();
+
+        if (!$isAssigned) {
+            abort(403, 'この店舗を同期する権限がありません。');
         }
+    } else {
+        abort(403, 'オペレーターIDが設定されていません。');
+    }
+}
+
+
+
+
         
         $startDate = $request->input('start_date');
         $endDate = $request->input('end_date');

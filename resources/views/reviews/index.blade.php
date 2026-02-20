@@ -103,7 +103,7 @@
             @endif
 
             <!-- 同期ボタン -->
-            @if($shops->count() > 0)
+            @if(true)
                 <div class="bg-white rounded-xl shadow-md border border-gray-100 mb-6 overflow-hidden">
                     <div class="bg-gradient-to-r from-[#00afcc] to-[#0088a3] px-6 py-4">
                         <div class="flex items-center">

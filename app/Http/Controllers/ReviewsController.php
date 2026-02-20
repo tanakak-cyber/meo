@@ -38,18 +38,16 @@ class ReviewsController extends Controller
         $user = Auth::user();
         $shopQuery = Shop::whereNotNull('gbp_location_id');
         
-        // 顧客閲覧範囲によるフィルタリング
-        if ($user && $user->is_admin) {
-            if ($user->customer_scope === 'own') {
-                $shopQuery->where('created_by', $user->id);
-            }
-            // 'all' の場合はフィルタリングなし
-        } else {
-            // 一般ユーザー（非管理者）の場合は自分の顧客のみ
-            if ($user) {
-                $shopQuery->where('created_by', $user->id);
-            }
-        }
+      // 顧客閲覧範囲によるフィルタリング（統一ロジック）
+$user = Auth::user();
+
+if ($user) {
+    // 「自分の顧客のみ」の場合だけ制限
+    if ($user->customer_scope === 'own') {
+        $shopQuery->where('created_by', $user->id);
+    }
+    // customer_scope = 'all' の場合は制限なし（全店舗同期可能）
+}
         
         if ($status === 'active') {
             // 契約中店舗のみ
@@ -77,7 +75,12 @@ class ReviewsController extends Controller
         }
         
         // オペレーターIDをセッションから取得
-        $operatorId = session('operator_id');
+        $user = Auth::user();
+        if ($user && $user->is_admin) {
+            $operatorId = null;
+        } else {
+            $operatorId = session('operator_id');
+        }
         $user = Auth::user();
         if ($user && !$user->is_admin && $user->operator_id) {
             $operatorId = $user->operator_id;
@@ -102,7 +105,12 @@ class ReviewsController extends Controller
         
         // オペレーターの場合は担当店舗のみをフィルタ（operator_shopsテーブルを使用、なければoperation_person_idでフォールバック）
         $user = Auth::user();
-        $operatorId = session('operator_id');
+        $user = Auth::user();
+        if ($user && $user->is_admin) {
+            $operatorId = null;
+        } else {
+            $operatorId = session('operator_id');
+        }
         $assignedShopIds = null;
         $useOperationPersonId = false;
         if (!$user || !$user->is_admin) {
@@ -214,7 +222,12 @@ class ReviewsController extends Controller
         // 注意: このフィルタリングは既に whereHas の中で行われているため、ここでは重複チェックのみ
         // ただし、念のため再度フィルタリングを追加（whereHas と whereIn の両方でフィルタリング）
         $user = Auth::user();
-        $operatorId = session('operator_id');
+        $user = Auth::user();
+        if ($user && $user->is_admin) {
+            $operatorId = null;
+        } else {
+            $operatorId = session('operator_id');
+        }
         if (!$user || !$user->is_admin) {
             // オペレーターの場合
             if ($user && !$user->is_admin && $user->operator_id) {
@@ -275,7 +288,12 @@ class ReviewsController extends Controller
     {
         $user = Auth::user();
         $shop = $review->shop;
-        $operatorId = session('operator_id');
+        $user = Auth::user();
+        if ($user && $user->is_admin) {
+            $operatorId = null;
+        } else {
+            $operatorId = session('operator_id');
+        }
         
         // オペレーターでログインしている場合
         if ($operatorId) {
@@ -291,16 +309,18 @@ class ReviewsController extends Controller
                 }
             }
         } else {
-            // 管理者/一般ユーザーの場合の権限チェック
-            if ($user && $user->is_admin) {
-                if ($user->customer_scope === 'own' && $shop->created_by !== $user->id) {
-                    abort(403, 'この口コミを閲覧する権限がありません。');
-                }
-            } elseif ($user && !$user->is_admin) {
-                if ($shop->created_by !== $user->id) {
-                    abort(403, 'この口コミを閲覧する権限がありません。');
-                }
-            }
+            // 顧客閲覧範囲による権限チェック（UI設定と統一）
+$user = Auth::user();
+
+if ($user) {
+    // 「自分の顧客のみ」のときだけ制限
+    if ($user->customer_scope === 'own') {
+        if ($shop->created_by !== $user->id) {
+            abort(403, 'この口コミを閲覧する権限がありません。');
+        }
+    }
+    // customer_scope = all の場合は全店舗閲覧OK
+}
         }
         
         $review->load('shop');
@@ -331,7 +351,12 @@ class ReviewsController extends Controller
         $endDateCarbon = $endDate ? Carbon::parse($endDate, 'Asia/Tokyo')->endOfDay()->utc() : null;
         
         if ($startDateCarbon && $endDateCarbon && $startDateCarbon->gt($endDateCarbon)) {
+            $user = Auth::user();
+        if ($user && $user->is_admin) {
+            $operatorId = null;
+        } else {
             $operatorId = session('operator_id');
+        }
             $routeName = $operatorId ? 'operator.reviews.index' : 'reviews.index';
             return redirect()->route($routeName)
                 ->with('error', '開始日が終了日より後になっています。');
@@ -341,7 +366,12 @@ class ReviewsController extends Controller
         $operationPersonId = $request->input('operation_person_id');
         
         // オペレーターIDを取得
-        $operatorId = session('operator_id');
+        $user = Auth::user();
+        if ($user && $user->is_admin) {
+            $operatorId = null;
+        } else {
+            $operatorId = session('operator_id');
+        }
         
         if ($shopId === 'all') {
             // 全店舗同期の場合、契約中の店舗のみを取得
@@ -352,19 +382,16 @@ class ReviewsController extends Controller
                           ->orWhere('contract_end_date', '>=', $today);
                 });
             
-            // 顧客閲覧範囲によるフィルタリング
-            $user = Auth::user();
-            if ($user && $user->is_admin) {
-                if ($user->customer_scope === 'own') {
-                    $shopQuery->where('created_by', $user->id);
-                }
-                // 'all' の場合はフィルタリングなし
-            } else {
-                // 一般ユーザー（非管理者）の場合は自分の顧客のみ
-                if ($user) {
-                    $shopQuery->where('created_by', $user->id);
-                }
-            }
+         // 顧客閲覧範囲によるフィルタリング（sync用：UI仕様と完全一致）
+$user = Auth::user();
+
+if ($user) {
+    // 「自分の顧客のみ」のときだけ制限
+    if ($user->customer_scope === 'own') {
+        $shopQuery->where('created_by', $user->id);
+    }
+    // customer_scope = 'all' の場合は一切制限しない（←超重要）
+}
             
             // オペレーターがログインしている場合は、自分の担当店舗のみ
             if ($operatorId) {
@@ -411,14 +438,24 @@ class ReviewsController extends Controller
         }
 
         if ($shops->isEmpty()) {
+            $user = Auth::user();
+        if ($user && $user->is_admin) {
+            $operatorId = null;
+        } else {
             $operatorId = session('operator_id');
+        }
             $routeName = $operatorId ? 'operator.reviews.index' : 'reviews.index';
             return redirect()->route($routeName)
                 ->with('error', '同期対象の店舗が見つかりませんでした。Google連携が完了している店舗を選択してください。');
         }
 
         // オペレーターIDを取得（管理者の場合はnullでもOK）
-        $operatorId = session('operator_id');
+        $user = Auth::user();
+        if ($user && $user->is_admin) {
+            $operatorId = null;
+        } else {
+            $operatorId = session('operator_id');
+        }
 
         // 店舗IDの配列を取得
         $shopIds = $shops->pluck('id')->toArray();
@@ -853,7 +890,12 @@ class ReviewsController extends Controller
         // 顧客閲覧範囲による権限チェック
         $user = Auth::user();
         $shop = $review->shop;
-        $operatorId = session('operator_id');
+        $user = Auth::user();
+        if ($user && $user->is_admin) {
+            $operatorId = null;
+        } else {
+            $operatorId = session('operator_id');
+        }
         
         // オペレーターでログインしている場合
         if ($operatorId) {

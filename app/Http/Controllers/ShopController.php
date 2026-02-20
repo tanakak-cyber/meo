@@ -41,18 +41,41 @@ class ShopController extends Controller
         $user = Auth::user();
         $query = Shop::query();
         
-        // 顧客閲覧範囲によるフィルタリング
-        if ($user && $user->is_admin) {
-            if ($user->customer_scope === 'own') {
-                $query->where('created_by', $user->id);
-            }
-            // 'all' の場合はフィルタリングなし
-        } else {
-            // 一般ユーザー（非管理者）の場合は自分の顧客のみ
-            if ($user) {
-                $query->where('created_by', $user->id);
-            }
-        }
+
+
+// 顧客閲覧範囲＋オペレーター対応（完全統一版）
+$user = Auth::user();
+$operatorId = session('operator_id');
+
+// オペレーター経由は最優先（Auth::user()がnullでも存在）
+if ($operatorId) {
+    // operator_shopsから担当店舗のみ
+    $assignedShopIds = \App\Models\OperatorShop::where('operator_id', $operatorId)
+        ->pluck('shop_id')
+        ->toArray();
+
+    if (!empty($assignedShopIds)) {
+        $query->whereIn('id', $assignedShopIds);
+    } else {
+        // 担当店舗なしは0件
+        $query->whereRaw('1 = 0');
+    }
+
+} elseif ($user) {
+    // customer_scope 正規化（超重要）
+    $customerScope = strtolower(trim($user->customer_scope ?? 'all'));
+
+    // own の場合のみ created_by 制限
+    if ($customerScope === 'own') {
+        $query->where('created_by', $user->id);
+    }
+    // all は全顧客表示（is_admin関係なし）
+}
+
+
+
+
+
         
         // 期間で絞り込み（デフォルトは今月）
         $periodStart = $request->get('period_start', now()->startOfMonth()->format('Y-m-d'));
@@ -102,17 +125,27 @@ class ShopController extends Controller
         $query = Shop::query();
         
         // 顧客閲覧範囲によるフィルタリング
-        if ($user && $user->is_admin) {
-            if ($user->customer_scope === 'own') {
-                $query->where('created_by', $user->id);
-            }
-            // 'all' の場合はフィルタリングなし
-        } else {
-            // 一般ユーザー（非管理者）の場合は自分の顧客のみ
-            if ($user) {
-                $query->where('created_by', $user->id);
-            }
-        }
+// 顧客閲覧範囲によるフィルタリング（修正版）
+if ($user) {
+    // customer_scopeがnullの場合は'all'として扱う
+    // 大文字小文字・空白対策
+    $customerScope = strtolower(trim($user->customer_scope ?? 'all'));
+
+    // デバッグログ（本番でも有用）
+    \Log::info('SHOP_INDEX_CUSTOMER_SCOPE', [
+        'user_id' => $user->id,
+        'is_admin' => $user->is_admin,
+        'customer_scope_raw' => $user->customer_scope,
+        'customer_scope_processed' => $customerScope,
+        'will_filter_by_created_by' => $customerScope === 'own',
+    ]);
+
+    if ($customerScope === 'own') {
+        $query->where('created_by', $user->id);
+    }
+    // 'all' はフィルタなし
+}
+
         
         // 期間で絞り込み（デフォルトは今月）
         $periodStart = $request->get('period_start', now()->startOfMonth()->format('Y-m-d'));
@@ -290,20 +323,78 @@ $validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
         return redirect()->route('shops.index')->with('success', '店舗を登録しました。');
     }
 
-    public function show(Shop $shop)
-    {
-        // 顧客閲覧範囲による権限チェック
+public function show(Shop $shop)
+{
+    $user = Auth::user(); // ← ★これを最初に追加（必須）
+    // ===== オペレーター優先判定（最重要）=====
+    $operatorId = session('operator_id');
+
+    // オペレーターでログインしている場合
+    if ($operatorId) {
+        // 担当店舗チェック（operator_shops優先）
+        $isAssigned = \App\Models\OperatorShop::where('operator_id', $operatorId)
+            ->where('shop_id', $shop->id)
+            ->exists();
+
+        // フォールバック：operation_person_id
+        if (!$isAssigned) {
+            $isAssigned = ($shop->operation_person_id == $operatorId);
+        }
+
+        if (!$isAssigned) {
+            abort(403, 'この店舗を閲覧する権限がありません。（担当外店舗）');
+        }
+
+        // オペレーターはここで許可（Auth::user()不要）
+    } else {
+        // ===== 管理者・通常ユーザー判定 =====
         $user = Auth::user();
-        
-        if ($user && $user->is_admin) {
+
+        if (!$user) {
+            abort(403, '認証が必要です。');
+        }
+
+        // 顧客閲覧範囲（customer_scope）
+        if ($user->is_admin) {
             if ($user->customer_scope === 'own' && $shop->created_by !== $user->id) {
                 abort(403, 'この店舗を閲覧する権限がありません。');
             }
-        } elseif ($user && !$user->is_admin) {
+        } else {
             if ($shop->created_by !== $user->id) {
                 abort(403, 'この店舗を閲覧する権限がありません。');
             }
         }
+    }
+
+// customer_scopeを正規化（nullは'all'扱い）
+$customerScope = strtolower(trim($user->customer_scope ?? 'all'));
+$isAdmin = $user && (
+    (bool)$user->is_admin === true
+    || $user->customer_scope === 'all'
+);
+
+// 「実質管理者」判定（今回の統一仕様）
+$shouldTreatAsAdmin = $isAdmin || ($customerScope === 'all');
+
+// own の場合のみ自分の顧客に制限
+if (!$shouldTreatAsAdmin) {
+    if ($customerScope === 'own') {
+        if ($shop->created_by !== $user->id) {
+            abort(403, 'この店舗を閲覧する権限がありません。');
+        }
+    }
+}
+
+// ★デバッグログ（後で消してOK）
+\Log::info('SHOP_SHOW_SCOPE_CHECK', [
+    'user_id' => $user?->id,
+    'shop_id' => $shop->id,
+    'is_admin' => $isAdmin,
+    'customer_scope' => $customerScope,
+    'should_treat_as_admin' => $shouldTreatAsAdmin,
+    'shop_created_by' => $shop->created_by,
+]);
+
         
         // オペレーターの場合は自分の担当店舗のみアクセス可能（operator_shopsテーブルを使用、なければoperation_person_idでフォールバック）
         $operatorId = session('operator_id');
@@ -370,15 +461,44 @@ $validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
         // 顧客閲覧範囲による権限チェック
         $user = Auth::user();
         
-        if ($user && $user->is_admin) {
-            if ($user->customer_scope === 'own' && $shop->created_by !== $user->id) {
-                abort(403, 'この店舗を編集する権限がありません。');
-            }
-        } elseif ($user && !$user->is_admin) {
-            if ($shop->created_by !== $user->id) {
-                abort(403, 'この店舗を編集する権限がありません。');
-            }
+// ===== 編集権限チェック（customer_scope統一版）=====
+$user = Auth::user();
+
+if (!$user) {
+    abort(403, '認証が必要です。');
+}
+
+// customer_scopeを正規化（nullは'all'扱い）
+$customerScope = strtolower(trim($user->customer_scope ?? 'all'));
+$isAdmin = (bool) ($user->is_admin ?? false);
+
+// 実質管理者判定（あなたのシステム仕様）
+$shouldTreatAsAdmin = $isAdmin || ($customerScope === 'all');
+
+// own の場合のみ自分の顧客に制限
+if (!$shouldTreatAsAdmin) {
+    if ($customerScope === 'own') {
+        if ($shop->created_by !== $user->id) {
+            abort(403, 'この店舗を編集する権限がありません。');
         }
+    } else {
+        // 念のための安全ガード
+        if ($shop->created_by !== $user->id) {
+            abort(403, 'この店舗を編集する権限がありません。');
+        }
+    }
+}
+
+// デバッグログ（あとで削除OK）
+\Log::info('SHOP_UPDATE_SCOPE_CHECK', [
+    'user_id' => $user->id,
+    'shop_id' => $shop->id,
+    'is_admin' => $isAdmin,
+    'customer_scope' => $customerScope,
+    'should_treat_as_admin' => $shouldTreatAsAdmin,
+    'shop_created_by' => $shop->created_by,
+]);
+
         
         // メソッドが呼ばれたことを確認するためのログ（tryブロックの外）
         Log::info('SHOP_UPDATE_METHOD_CALLED', [
@@ -834,18 +954,16 @@ $validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
         $user = Auth::user();
         $shopQuery = Shop::query();
         
-        // 顧客閲覧範囲によるフィルタリング
-        if ($user && $user->is_admin) {
-            if ($user->customer_scope === 'own') {
-                $shopQuery->where('created_by', $user->id);
-            }
-            // 'all' の場合はフィルタリングなし
-        } else {
-            // 一般ユーザー（非管理者）の場合は自分の顧客のみ
-            if ($user) {
-                $shopQuery->where('created_by', $user->id);
-            }
-        }
+        // 顧客閲覧範囲によるフィルタリン
+// 顧客閲覧範囲によるフィルタリング（schedule: メインクエリ）
+if ($user) {
+    $customerScope = strtolower(trim($user->customer_scope ?? 'all'));
+
+    if ($customerScope === 'own') {
+        $shopQuery->where('created_by', $user->id);
+    }
+    // 'all' は全顧客表示
+}
         
         if ($status === 'active') {
             // 契約中店舗のみ
@@ -919,7 +1037,14 @@ $validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
                 $shopsForSyncQuery->where('operation_person_id', $operatorId);
             }
         }
-        
+        // 顧客閲覧範囲フィルタリング（同期対象にも適用）
+if ($user) {
+    $customerScope = strtolower(trim($user->customer_scope ?? 'all'));
+
+    if ($customerScope === 'own') {
+        $shopsForSyncQuery->where('created_by', $user->id);
+    }
+}
         $shopsForSync = $shopsForSyncQuery->get();
 
         // 連絡履歴を一括取得（パフォーマンス向上のため）
@@ -1317,27 +1442,60 @@ $validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
         // オペレーション担当で絞り込み
         $operationPersonId = $request->input('operation_person_id');
         
-        // operator_id を取得
-        // 管理者（is_admin = true）は operator_id = NULL
-        // オペレーター（is_admin = false）は必ず自分の operator_id
-        $operatorId = null;
-        $user = Auth::user();
-        if ($user && $user->is_admin) {
-            // 管理者の場合は operator_id = null
-            $operatorId = null;
-        } elseif ($user && !$user->is_admin) {
-            // オペレーター（Userモデル経由）の場合は必ず自分の operator_id
-            if (!$user->operator_id) {
-                return redirect()->route('shops.schedule', [
-                    'year' => $request->get('year', now()->year),
-                    'month' => $request->get('month', now()->month),
-                ])->with('error', 'オペレーターIDが設定されていません。オペレーターは必ず自分の operator_id で同期する必要があります。');
-            }
-            $operatorId = $user->operator_id;
-        } elseif (session('operator_id')) {
-            // オペレーター（OperationPerson経由）の場合は session('operator_id')
-            $operatorId = session('operator_id');
+
+
+
+// ★最優先：オペレーター専用ログイン対応（完全版）
+$user = Auth::user();
+$sessionOperatorId = session('operator_id');
+
+// デバッグログ（本番解析用）
+\Log::info('SCHEDULE_SYNC_AUTH_STATE', [
+    'auth_user_id' => $user->id ?? null,
+    'session_operator_id' => $sessionOperatorId,
+]);
+
+// ▼オペレーター最優先（Auth::user() が null でも正常動作）
+if ($sessionOperatorId) {
+    $operatorId = $sessionOperatorId;
+
+// ▼管理画面ログインユーザー
+} elseif ($user) {
+
+    // customer_scope 正規化（安全）
+    $customerScope = strtolower(trim($user->customer_scope ?? 'all'));
+    $isAdmin = (bool) ($user->is_admin ?? false);
+
+    // customer_scope = all は全店舗許可
+    if ($isAdmin || $customerScope === 'all') {
+        $operatorId = null; // 全店舗同期可能
+    } else {
+        // 自分の担当のみ
+        if (!$user->operator_id) {
+            return redirect()->route('shops.schedule', [
+                'year' => $request->get('year', now()->year),
+                'month' => $request->get('month', now()->month),
+            ])->with('error', 'operator_id が未設定です。');
         }
+        $operatorId = $user->operator_id;
+    }
+
+// ▼完全未ログイン（異常）
+} else {
+    return redirect()->route('login');
+}
+
+
+
+
+
+
+
+
+
+
+
+
         
         if ($shopId === 'all') {
             // 全店舗同期の場合、契約中の店舗のみを取得
@@ -2393,9 +2551,11 @@ $validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
             'all_auth_guards' => array_keys(config('auth.guards')),
         ]);
         
-        // 管理者の場合は権限チェックを完全にスキップ
-        // is_admin を明示的に boolean にキャストしてチェック
-        $isAdmin = $user && (bool)$user->is_admin === true;
+        // 管理者相当（is_admin=true または customer_scope=all）
+$isAdmin = $user && (
+    (bool)$user->is_admin === true
+    || ($user->customer_scope ?? null) === 'all'
+);
         
         Log::info('CONTACT_LOG_STORE_ADMIN_CHECK', [
             'is_admin' => $isAdmin,
@@ -2554,8 +2714,10 @@ $validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
             'request_date' => $request->get('date'),
         ]);
         
-        // 管理者の場合は権限チェックを完全にスキップ
-        $isAdmin = $user && (bool)$user->is_admin === true;
+        $isAdmin = $user && (
+    (bool)$user->is_admin === true
+    || ($user->customer_scope ?? null) === 'all'
+);
         
         Log::info('CONTACT_LOG_GET_ADMIN_CHECK', [
             'is_admin' => $isAdmin,
@@ -2666,8 +2828,11 @@ $validated['wp_post_enabled'] = (bool) $request->input('wp_post_enabled', 0);
         // 管理者は全店舗にアクセス可能
         $user = Auth::user();
         
-        // 管理者の場合は権限チェックを完全にスキップ
-        $isAdmin = $user && $user->is_admin;
+        // 管理者判定（customer_scope=all も管理者扱い）
+$isAdmin = $user && (
+    (bool)$user->is_admin === true
+    || ($user->customer_scope ?? null) === 'all'
+);
         
         if (!$isAdmin) {
             // オペレーターの場合のみ権限チェック

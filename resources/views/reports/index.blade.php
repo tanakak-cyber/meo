@@ -35,12 +35,11 @@
                 </div>
             @endif
 
-            @if(session('sync_batch_id'))
+            
                 <div data-sync-batch-id="{{ session('sync_batch_id') }}" style="display: none;"></div>
-            @endif
-
+            
             <!-- 口コミ・写真・投稿同期 -->
-            @if(isset($shops) && $shops->count() > 0)
+{{--            @if(isset($shops) && $shops->count() > 0)
                 <div class="bg-white rounded-xl shadow-md border border-gray-100 mb-6 overflow-hidden">
                     <div class="bg-gradient-to-r from-[#00afcc] to-[#0088a3] px-6 py-4">
                         <div class="flex items-center">
@@ -101,6 +100,7 @@
                     </div>
                 </div>
             @endif
+--}}
 
             <!-- 店舗ステータス絞り込み -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
@@ -186,7 +186,7 @@
         </div>
     </div>
 
-    @if(session('sync_batch_id'))
+    
         <script>
             console.log('SyncProgressTracker: Script loaded, sync_batch_id = {{ session("sync_batch_id") }}');
             
@@ -282,10 +282,17 @@
 
                             async checkProgress() {
                                 try {
-                                    const url = `/api/sync-batches/${this.batchId}`;
+                                    const url = `/operator/api/sync-batches/${this.batchId}`;
                                     console.log('SyncProgressTracker: Checking progress', url);
                                     
-                                    const response = await fetch(url);
+                                    const response = await fetch(url, {
+    method: 'GET',
+    credentials: 'same-origin',
+    headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'application/json'
+    }
+});
                                     
                                     if (!response.ok) {
                                         console.error('SyncProgressTracker: API response not OK', response.status, response.statusText);
@@ -468,7 +475,7 @@
                 }
             });
         </script>
-    @endif
+    
 
     <!-- バッチ同期詳細モーダル -->
     <div id="batchSyncDetailsModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 hidden">
@@ -508,7 +515,14 @@
     <script>
         async function showBatchSyncDetailsModal(batchId) {
             try {
-                const response = await fetch(`/api/sync-batches/${batchId}`);
+                const response = await fetch(`/api/sync-batches/${batchId}`, {
+    method: 'GET',
+    credentials: 'same-origin',
+    headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'application/json'
+    }
+});
                 const data = await response.json();
                 
                 // 全体サマリーを表示
