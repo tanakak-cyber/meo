@@ -911,17 +911,29 @@ if ($user) {
                 }
             }
         } else {
-            // 管理者/一般ユーザーの場合の権限チェック
-            if ($user && $user->is_admin) {
-                if ($user->customer_scope === 'own' && $shop->created_by !== $user->id) {
-                    abort(403, 'この口コミに返信する権限がありません。');
-                }
-            } elseif ($user && !$user->is_admin) {
-                if ($shop->created_by !== $user->id) {
-                    abort(403, 'この口コミに返信する権限がありません。');
-                }
+            // 管理者/一般ユーザーの場合の権限チェック（統一版）
+if ($user) {
+
+    $customerScope = strtolower(trim($user->customer_scope ?? 'all'));
+    $isSystemAdmin = (bool)$user->is_admin === true;
+
+    // システム管理者は完全許可
+    if (!$isSystemAdmin) {
+
+        if ($customerScope === 'own') {
+            if ($shop->created_by !== $user->id) {
+                abort(403, 'この口コミに返信する権限がありません。');
             }
         }
+
+        if ($customerScope !== 'all' && $customerScope !== 'own') {
+            if ($shop->created_by !== $user->id) {
+                abort(403, 'この口コミに返信する権限がありません。');
+            }
+        }
+    }
+}
+}
         
         // オペレーター用のルート名を決定
         $routeName = $operatorId ? 'operator.reviews.show' : 'reviews.show';
