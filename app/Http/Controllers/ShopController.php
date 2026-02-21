@@ -354,44 +354,62 @@ public function show(Shop $shop)
             abort(403, '認証が必要です。');
         }
 
-        // 顧客閲覧範囲（customer_scope）
-        if ($user->is_admin) {
-            if ($user->customer_scope === 'own' && $shop->created_by !== $user->id) {
-                abort(403, 'この店舗を閲覧する権限がありません。');
-            }
-        } else {
-            if ($shop->created_by !== $user->id) {
-                abort(403, 'この店舗を閲覧する権限がありません。');
-            }
-        }
-    }
 
-// customer_scopeを正規化（nullは'all'扱い）
+
+
+
+// ===== 管理者・通常ユーザー判定（統一版）=====
+if (!$user) {
+    abort(403, '認証が必要です。');
+}
+
 $customerScope = strtolower(trim($user->customer_scope ?? 'all'));
-$isAdmin = $user && (
-    (bool)$user->is_admin === true
-    || $user->customer_scope === 'all'
-);
+$isAdmin = (bool) ($user->is_admin ?? false);
 
-// 「実質管理者」判定（今回の統一仕様）
-$shouldTreatAsAdmin = $isAdmin || ($customerScope === 'all');
+// システムアドミン → 全店舗OK
+if ($isAdmin) {
+    // OK
+}
 
-// own の場合のみ自分の顧客に制限
-if (!$shouldTreatAsAdmin) {
-    if ($customerScope === 'own') {
-        if ($shop->created_by !== $user->id) {
-            abort(403, 'この店舗を閲覧する権限がありません。');
-        }
+// 管理者（全店舗）→ OK
+elseif ($customerScope === 'all') {
+    // OK
+}
+
+// 管理者（自分のみ）
+elseif ($customerScope === 'own') {
+    if ($shop->created_by !== $user->id) {
+        abort(403, 'この店舗を閲覧する権限がありません。');
     }
 }
 
-// ★デバッグログ（後で消してOK）
+// その他（念のため）
+else {
+    if ($shop->created_by !== $user->id) {
+        abort(403, 'この店舗を閲覧する権限がありません。');
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+//デバッグログ（後で消してOK）
 \Log::info('SHOP_SHOW_SCOPE_CHECK', [
     'user_id' => $user?->id,
     'shop_id' => $shop->id,
     'is_admin' => $isAdmin,
     'customer_scope' => $customerScope,
-    'should_treat_as_admin' => $shouldTreatAsAdmin,
     'shop_created_by' => $shop->created_by,
 ]);
 
