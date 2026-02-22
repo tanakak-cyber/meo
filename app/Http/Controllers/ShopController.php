@@ -1102,8 +1102,8 @@ if ($user) {
         
         // 管理者向け集計：各日付の取得済店舗数を計算
         $rankFetchedCountByDate = [];
-        if ($user && $user->is_admin) {
-            for ($day = 1; $day <= $daysInMonth; $day++) {
+        
+          for ($day = 1; $day <= $daysInMonth; $day++) {
                 $dateJst = CarbonImmutable::create($year, $month, $day, 0, 0, 0, 'Asia/Tokyo');
                 $date = $dateJst->format('Y-m-d');
                 $fetchedCount = 0;
@@ -1117,7 +1117,7 @@ if ($user) {
                     'total' => $shops->count(),
                 ];
             }
-        }
+        
 
         $scheduleData = [];
         foreach ($shops as $shop) {

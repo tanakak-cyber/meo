@@ -221,7 +221,7 @@
                                     @endphp
                                     <th class="px-3 py-3 text-center text-xs font-bold uppercase tracking-wider min-w-[60px] sticky top-0 z-10" style="background-color: {{ $cellBgColor }}; color: white; {{ $borderStyle }}">
                                         <div>{{ $day }}</div>
-                                        @if(isset($user) && $user->is_admin && isset($rankFetchedCountByDate[$day]))
+                                        @if((Auth::check() || session('operator_id')) && isset($rankFetchedCountByDate[$day]))
                                             <div class="text-xs font-normal mt-1" style="color: rgba(255, 255, 255, 0.9);">
                                                 {{ $rankFetchedCountByDate[$day]['fetched'] }} / {{ $rankFetchedCountByDate[$day]['total'] }}
                                             </div>
