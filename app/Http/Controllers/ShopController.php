@@ -2952,34 +2952,29 @@ $isAdmin = $user && (
         $user       = Auth::user();
         $operatorId = session('operator_id');
 
-        if ($user && $user->is_admin) {
-            $requestedByType = 'admin';
-            $requestedById   = $user->id;
-        } else {
-            if ($user && !$user->is_admin && $user->operator_id) {
-                $operatorId = $user->operator_id;
-            }
+        
+if ($user) {
+    // 管理画面ログイン（システム管理者・一般管理者どちらも）
+    $requestedByType = 'admin';
+    $requestedById   = $user->id;
 
-            if (!$operatorId) {
-                Log::warning('RANK_FETCH_OPERATOR_ID_MISSING', [
-                    'shop_id' => $shopId,
-                    'target_date' => $targetDate,
-                    'user_id' => Auth::id(),
-                    'user_operator_id' => $user->operator_id ?? null,
-                    'session_operator_id' => session('operator_id'),
-                ]);
+} elseif ($operatorId) {
+    // オペレーターログイン
+    $requestedByType = 'operator';
+    $requestedById   = $operatorId;
 
-                return response()->json([
-                    'success' => false,
-                    'message' => 'オペレーターIDが設定されていません。',
-                ], 403);
-            }
+} else {
+    return response()->json([
+        'success' => false,
+        'message' => '権限がありません。',
+    ], 403);
+}
 
-            $requestedByType = 'operator';
-            $requestedById   = $operatorId;
-        }
 
-        Log::info('RANK_FETCH_AUTHENTICATION_SUCCESS', [
+
+
+
+     Log::info('RANK_FETCH_AUTHENTICATION_SUCCESS', [
             'shop_id' => $shopId,
             'target_date' => $targetDate,
             'requested_by_type' => $requestedByType,
@@ -3145,29 +3140,30 @@ $isAdmin = $user && (
         $operatorId = session('operator_id');
 
         // 権限チェック
-        if ($user && $user->is_admin) {
-            // 管理者は全店舗のデータを削除可能
-        } else {
-            if ($user && !$user->is_admin && $user->operator_id) {
-                $operatorId = $user->operator_id;
-            }
+$user       = Auth::user();
+$operatorId = session('operator_id');
 
-            if (!$operatorId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'オペレーターIDが設定されていません。',
-                ], 403);
-            }
+if ($user) {
+    // 管理画面ログイン（システム管理者・一般管理者）
+    // 全店舗削除可能
 
-            // オペレーターは自分の担当店舗のみ削除可能
-            $shop = Shop::find($shopId);
-            if (!$shop || $shop->operation_person_id != $operatorId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'この店舗のデータを削除する権限がありません。',
-                ], 403);
-            }
-        }
+} elseif ($operatorId) {
+    // オペレーターログイン → 自分の担当店舗のみ
+    $shop = Shop::find($shopId);
+
+    if (!$shop || $shop->operation_person_id != $operatorId) {
+        return response()->json([
+            'success' => false,
+            'message' => 'この店舗のデータを削除する権限がありません。',
+        ], 403);
+    }
+
+} else {
+    return response()->json([
+        'success' => false,
+        'message' => '権限がありません。',
+    ], 403);
+}
 
         DB::beginTransaction();
 
