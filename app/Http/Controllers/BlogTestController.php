@@ -71,8 +71,8 @@ class BlogTestController extends Controller
                Log::error('BLOG_TEST_NO_ARTICLES_FOUND', [
     'shop_id' => $shop->id,
     'url' => $shop->blog_list_url,
-    'item_selector' => $itemSelector,
-    'link_selector' => $linkSelector,
+    'item_selector' => $shop->blog_item_selector,
+'link_selector' => $shop->blog_link_selector,
 ]);
                 return response()->json([
                     'status' => 'error',
