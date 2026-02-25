@@ -362,15 +362,9 @@ class GoogleBusinessProfileService
         try {
             $response = Http::withToken($accessToken)
                 ->get('https://mybusinessaccountmanagement.googleapis.com/v1/accounts');
-
             if ($response->successful()) {
                 return $response->json();
             }
-
-            Log::error('Google Business Profile API accounts.list failed', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
 
             return [];
         } catch (\Exception $e) {
@@ -511,8 +505,18 @@ class GoogleBusinessProfileService
             $response = Http::withToken($accessToken)
                 ->get($url);
 
+// 👇 ここに追加
+Log::info('DEBUG_TOTAL_REVIEW_COUNT', [
+    'shop_id' => $shopId,
+    'status' => $response->status(),
+    'totalReviewCount' => $response->json()['totalReviewCount'] ?? null,
+    'reviews_count_in_body' => isset($response->json()['reviews']) ? count($response->json()['reviews']) : null,
+    'nextPageToken_exists' => isset($response->json()['nextPageToken']),
+]);
+
             $apiElapsedMs = (microtime(true) - $apiStartTime) * 1000;
             
+
             if (!$response->successful()) {
                 Log::error('Google Business Profile API locations.reviews.list failed', [
                     'shop_id' => $shopId,

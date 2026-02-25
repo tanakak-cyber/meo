@@ -63,10 +63,16 @@ class ReviewSyncService
 
         // STEP0: 事前準備
         // cutoff = shop.last_reviews_synced_update_time（NULLなら初回フル同期）
+$cutoff = null;
+
+if ($sinceDate === null) {
+    $cutoff = $shop->last_reviews_synced_update_time
+        ? CarbonImmutable::parse($shop->last_reviews_synced_update_time, 'UTC')
+        : null;
+}
+
+
         // DBの値はUTCとして保存されているので、UTCとしてparseする
-        $cutoff = $shop->last_reviews_synced_update_time 
-            ? CarbonImmutable::parse($shop->last_reviews_synced_update_time, 'UTC')
-            : null;
         // maxSeen = 今回同期中に見た review.updateTime の最大値（最終的にshopへ保存）
         $maxSeen = $cutoff; // NULLなら maxSeen=NULL
         
@@ -131,52 +137,47 @@ class ReviewSyncService
                     $reviewsThisPage = $reviewsResponse;
                 }
                 
-                // STEP2: 各reviewの停止判定（差分同期の核）
-                foreach ($reviewsThisPage as $review) {
-                    $reviewUpdateTimeRaw = data_get($review, 'updateTime') ?? data_get($review, 'createTime');
-                    if ($reviewUpdateTimeRaw) {
-                        try {
-                            // UTCとしてparse（->utc() は不要）
-                            $reviewUpdate = CarbonImmutable::parse($reviewUpdateTimeRaw, 'UTC');
-                            
-                            // sinceDateによる打ち切り判定（updateTime基準）
-                            if ($sinceUtc !== null && $reviewUpdate->lessThan($sinceUtc)) {
-                                Log::info('ReviewSyncService: sinceDate判定で早期停止', [
-                                    'shop_id' => $shop->id,
-                                    'review_update_time' => $reviewUpdate->toIso8601String(),
-                                    'since_utc' => $sinceUtc->toIso8601String(),
-                                    'page' => $pageCount,
-                                ]);
-                                break 2; // 内側と外側のループを抜ける
-                            }
-                            
-                            // もし cutoff != NULL かつ reviewUpdate <= cutoff なら：
-                            // ここで「以降のレビューは全部cutoff以下」なので同期を打ち切る
-                            if ($cutoff !== null && $reviewUpdate->lessThanOrEqualTo($cutoff)) {
-                                $stoppedByCutoff = true;
-                                Log::info('ReviewSyncService: cutoff判定で早期停止', [
-                                    'shop_id' => $shop->id,
-                                    'review_update_time' => $reviewUpdate->toIso8601String(),
-                                    'cutoff' => $cutoff->toIso8601String(),
-                                    'page' => $pageCount,
-                                ]);
-                                break 2; // 内側と外側のループを抜ける
-                            }
-                        } catch (\Exception $e) {
-                            // パース失敗時はスキップして続行
-                            Log::warning('ReviewSyncService: review.updateTimeのパースに失敗', [
-                                'shop_id' => $shop->id,
-                                'review_update_time_raw' => $reviewUpdateTimeRaw,
-                                'error' => $e->getMessage(),
-                            ]);
-                        }
-                    }
-                    
-                    // cutoff判定を通過したレビューを追加
-                    $allReviews[] = $review;
-                }
+
+// STEP2: 各reviewのフィルタ判定（停止せずスキップする）
+foreach ($reviewsThisPage as $review) {
+
+    $reviewUpdateTimeRaw = data_get($review, 'updateTime') ?? data_get($review, 'createTime');
+
+    if ($reviewUpdateTimeRaw) {
+        try {
+            // UTCとしてparse
+            $reviewUpdate = CarbonImmutable::parse($reviewUpdateTimeRaw, 'UTC');
+
+            // sinceDate フィルタ（停止しない）
+            if ($sinceUtc !== null && $reviewUpdate->lessThan($sinceUtc)) {
+                continue;
+            }
+
+            // cutoff フィルタ（停止しない）
+            if ($cutoff !== null && $reviewUpdate->lessThanOrEqualTo($cutoff)) {
+                continue;
+            }
+
+        } catch (\Exception $e) {
+            Log::warning('ReviewSyncService: review.updateTimeのパースに失敗', [
+                'shop_id' => $shop->id,
+                'review_update_time_raw' => $reviewUpdateTimeRaw,
+                'error' => $e->getMessage(),
+            ]);
+            continue;
+        }
+    }
+
+    // 条件を通過したものだけ追加
+    $allReviews[] = $review;
+}
+
+
+
+
+
                 
-                // nextPageToken を取得
+                // extPageToken を取得
                 $nextPageToken = $reviewsResponse['nextPageToken'] ?? null;
                 
                 // 停止した場合は nextPageToken があっても無視して終了

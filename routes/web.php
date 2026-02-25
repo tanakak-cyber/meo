@@ -54,7 +54,7 @@ Route::middleware('operator.auth')->prefix('operator')->name('operator.')->group
     // 口コミ管理（オペレーター用）
     Route::get('/reviews', [App\Http\Controllers\ReviewsController::class, 'index'])->name('reviews.index');
     Route::get('/reviews/{review}', [App\Http\Controllers\ReviewsController::class, 'show'])->name('reviews.show');
-    Route::post('/reviews/sync', [App\Http\Controllers\ReviewsController::class, 'sync'])->name('reviews.sync');
+    Route::post('/reviews/sync', [App\Http\Controllers\ReviewsController::class, 'syncBatch'])->name('reviews.sync');
     Route::post('/reviews/{review}/reply', [App\Http\Controllers\ReviewsController::class, 'reply'])->name('reviews.reply');
     
     // 店舗詳細（オペレーター用、自分の担当店舗のみ）
@@ -117,7 +117,7 @@ Route::middleware(['auth', 'admin.only'])->group(function () {
     Route::middleware('admin.permission:reviews.index')->group(function () {
         Route::get('/reviews', [ReviewsController::class, 'index'])->name('reviews.index');
         Route::get('/reviews/{review}', [ReviewsController::class, 'show'])->name('reviews.show');
-        Route::post('/reviews/sync', [ReviewsController::class, 'sync'])->name('reviews.sync');
+        Route::post('/reviews/sync', [ReviewsController::class, 'syncBatch'])->name('reviews.sync');
         Route::post('/reviews/{review}/reply', [ReviewsController::class, 'reply'])->name('reviews.reply');
     });
 

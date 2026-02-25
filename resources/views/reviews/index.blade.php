@@ -100,10 +100,10 @@
 
             @if(session('sync_batch_id'))
                 <div data-sync-batch-id="{{ session('sync_batch_id') }}" style="display: none;"></div>
-            @endif
+         @endif
 
             <!-- 同期ボタン -->
-            @if(true)
+            @if(false)
                 <div class="bg-white rounded-xl shadow-md border border-gray-100 mb-6 overflow-hidden">
                     <div class="bg-gradient-to-r from-[#00afcc] to-[#0088a3] px-6 py-4">
                         <div class="flex items-center">
@@ -115,6 +115,7 @@
                             <h3 class="text-lg font-bold text-white">口コミ・写真・投稿同期</h3>
                         </div>
                     </div>
+
                     <div class="p-6">
                         <form method="POST" action="{{ session('operator_id') ? route('operator.reviews.sync') : route('reviews.sync') }}" class="flex flex-col lg:flex-row lg:items-end gap-4" onsubmit="if(document.querySelector('select[name=shop_id]').value === 'all') { return confirm('全店舗の口コミ・写真・投稿を同期しますか？\n時間がかかる場合があります。'); }">
                             @csrf

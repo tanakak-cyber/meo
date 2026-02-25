@@ -1537,22 +1537,29 @@ if ($sessionOperatorId) {
             $shop = Shop::whereNotNull('gbp_location_id')
                 ->where('id', $shopId)
                 ->firstOrFail();
-            
-            // オペレーターの場合は自分の担当店舗のみアクセス可能（operator_shopsテーブルを使用）
-            if ($operatorId !== null) {
-                $isAssigned = \App\Models\OperatorShop::where('operator_id', $operatorId)
-                    ->where('shop_id', $shop->id)
-                    ->exists();
-                
-                if (!$isAssigned) {
-                    $routeName = $operatorId ? 'operator.schedule' : 'shops.schedule';
-                    return redirect()->route($routeName, [
-                        'year' => $request->get('year', now()->year),
-                        'month' => $request->get('month', now()->month),
-                    ])->with('error', 'この店舗を同期する権限がありません。');
-                }
-            }
-            
+ 
+
+
+           
+if ($operatorId !== null) {
+
+    $isAssigned = \App\Models\OperatorShop::where('operator_id', $operatorId)
+        ->where('shop_id', $shop->id)
+        ->exists();
+
+    if (!$isAssigned && $shop->operation_person_id != $operatorId) {
+
+        $routeName = 'operator.schedule';
+
+        return redirect()->route($routeName, [
+            'year' => $request->get('year', now()->year),
+            'month' => $request->get('month', now()->month),
+        ])->with('error', "{$shop->name}: この店舗を同期する権限がありません。");
+    }
+}
+
+
+          
             if (!$shop->isContractActive()) {
                 $routeName = $operatorId ? 'operator.schedule' : 'shops.schedule';
                 return redirect()->route($routeName, [
@@ -1568,181 +1575,45 @@ if ($sessionOperatorId) {
         $shopIds = $shops->pluck('id')->toArray();
         $shopCount = count($shopIds);
 
-        // 1店舗の場合は直列処理、複数店舗の場合は並列処理
-        if ($shopCount <= 1) {
-            // ✅ 1店舗は直列処理
-            $totalPhotosInserted = 0;
-            $totalPhotosUpdated = 0;
-            $totalReviewsSynced = 0;
-            $totalPostsSynced = 0;
-            $errors = [];
 
-            foreach ($shops as $shop) {
-                try {
-                    // アクセストークンを取得
-                    $accessToken = $this->googleService->getAccessToken($shop);
-                    
-                    if (!$accessToken) {
-                        // より詳細なエラーメッセージを生成
-                        $errorMsg = "{$shop->name}: アクセストークンの取得に失敗しました。";
-                        if (empty($shop->gbp_refresh_token)) {
-                            $errorMsg = "{$shop->name}: リフレッシュトークンが設定されていません。OAuth認証を再度実行してください。";
-                        } else {
-                            $errorMsg = "{$shop->name}: リフレッシュトークンからのアクセストークン取得に失敗しました。OAuth認証を再度実行してください。";
-                        }
-                        $errors[] = $errorMsg;
-                        continue;
-                    }
 
-                    // 口コミを同期（期間指定あり）
-                    if (!$shop->gbp_account_id || !$shop->gbp_location_id) {
-                        $errors[] = "{$shop->name}: GBPアカウントIDまたはロケーションIDが設定されていません。";
-                        continue;
-                    }
-                    
-                    // オペレーターの場合は自分の担当店舗のみアクセス可能（operator_shopsテーブルを使用）
-                    if ($operatorId !== null) {
-                        $isAssigned = \App\Models\OperatorShop::where('operator_id', $operatorId)
-                            ->where('shop_id', $shop->id)
-                            ->exists();
-                        
-                        if (!$isAssigned) {
-                            $errors[] = "{$shop->name}: この店舗を同期する権限がありません。";
-                            continue;
-                        }
-                    }
 
-                    // スナップショットを作成（ユーザー別に分離）
-                    $currentUserId = \App\Helpers\AuthHelper::getCurrentUserId();
-                    $snapshot = GbpSnapshot::create([
-                        'shop_id' => $shop->id,
-                        'user_id' => $currentUserId,
-                        'synced_by_operator_id' => $operatorId, // 同期実行者（ログ用、nullable）
-                        'synced_at' => now(),
-                        'sync_params' => [
-                            'start_date' => $startDateCarbon?->format('Y-m-d'),
-                            'end_date' => $endDateCarbon?->format('Y-m-d'),
-                        ],
-                    ]);
 
-                    // 口コミを同期（期間指定あり、スナップショットIDを渡す）
-                    // GBPデータはSingle Source of Truthとして保存（operator_idは関係ない）
-                    $reviewsSynced = $this->syncReviews($shop, $accessToken, $snapshot->id, $sinceDate);
-                    $totalReviewsSynced += $reviewsSynced;
 
-                    // 写真を同期（完全差分同期）
-                    // GBPデータはSingle Source of Truthとして保存（operator_idは関係ない）
-                    $photoResult = $this->syncPhotos($shop, $accessToken, $snapshot->id, $sinceDate);
-                    $totalPhotosInserted += $photoResult['inserted'];
-                    $totalPhotosUpdated += $photoResult['updated'];
-                    
-                    // 投稿を同期（Service経由で保存）
-                    // GBPデータはSingle Source of Truthとして保存（operator_idは関係ない）
-                    $postResult = $this->googleService->syncLocalPostsAndSave($shop, $sinceDate);
-                    $postsCount = $postResult['inserted'] + $postResult['updated'];
-                    $totalPostsSynced += $postsCount;
-                    
-                    // スナップショットの数を更新（写真は追加+更新の合計）
-                    $snapshot->update([
-                        'photos_count' => $photoResult['inserted'] + $photoResult['updated'],
-                        'reviews_count' => $reviewsSynced,
-                        'posts_count' => $postsCount,
-                    ]);
 
-                    Log::info('口コミ・写真・投稿同期完了', [
-                        'shop_id' => $shop->id,
-                        'shop_name' => $shop->name,
-                        'reviews_synced' => $reviewsSynced,
-                        'photos_inserted' => $photoResult['inserted'],
-                        'photos_updated' => $photoResult['updated'],
-                        'posts_synced' => $postsCount,
-                    ]);
 
-                } catch (\Exception $e) {
-                    Log::error('写真同期エラー', [
-                        'shop_id' => $shop->id,
-                        'shop_name' => $shop->name,
-                        'message' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
-                    $errors[] = "{$shop->name}: " . $e->getMessage();
-                }
-            }
-        } else {
-            // ✅ 複数店舗は並列処理（最大3並列）
-            // 同期バッチレコードを作成
-            $syncBatch = SyncBatch::create([
-                'type' => 'all', // 口コミ・写真・投稿すべて
-                'total_shops' => $shopCount,
-                'status' => 'running',
-                'started_at' => now(),
-            ]);
+                    $syncBatch = SyncBatch::create([
+    'type' => 'all',
+    'total_shops' => $shopCount,
+    'status' => 'running',
+    'started_at' => now(),
+]);
 
-            // すべてのジョブを1つのバッチにまとめて並列実行
-            $jobs = [];
-            foreach ($shopIds as $shopId) {
-                $jobs[] = new SyncShopDataJob(
-                    $shopId,
-                    $sinceDate,
-                    $operatorId,
-                    $startDateCarbon?->format('Y-m-d'),
-                    $endDateCarbon?->format('Y-m-d'),
-                    $syncBatch->id
-                );
-            }
-            
-            // 1つのバッチとしてディスパッチ（Laravelが内部的に並列実行を制御）
-            Bus::batch($jobs)->dispatch();
+$jobs = [];
+foreach ($shopIds as $shopId) {
+    $jobs[] = new SyncShopDataJob(
+        $shopId,
+        $sinceDate,
+        $operatorId,
+        $startDateCarbon?->format('Y-m-d'),
+        $endDateCarbon?->format('Y-m-d'),
+        $syncBatch->id
+    );
+}
 
-            $routeName = $operatorId ? 'operator.schedule' : 'shops.schedule';
-            return redirect()->route($routeName, [
-                'year' => $request->get('year', now()->year),
-                'month' => $request->get('month', now()->month),
-            ])->with('success', "{$shopCount}店舗の同期処理を開始しました。バックグラウンドで実行されます。")
-              ->with('sync_batch_id', $syncBatch->id);
-        }
-        
-            // 口コミのメッセージを構築
-            $reviewMessages = [];
-            if ($totalReviewsSynced > 0) {
-                $reviewMessages[] = "口コミ {$totalReviewsSynced}件を同期しました";
-            } else {
-                $reviewMessages[] = "口コミの変更はありませんでした";
-            }
-            
-            // 写真のメッセージを構築
-            $photoMessages = [];
-            if ($totalPhotosInserted > 0) {
-                $photoMessages[] = "写真 {$totalPhotosInserted}件を追加しました";
-            }
-            if ($totalPhotosUpdated > 0) {
-                $photoMessages[] = "写真 {$totalPhotosUpdated}件を更新しました";
-            }
-            if (empty($photoMessages)) {
-                $photoMessages[] = "写真の変更はありませんでした";
-            }
-            
-            // 投稿のメッセージを構築
-            $postMessages = [];
-            if ($totalPostsSynced > 0) {
-                $postMessages[] = "投稿 {$totalPostsSynced}件を同期しました";
-            } else {
-                $postMessages[] = "投稿の変更はありませんでした";
-            }
-            
-            $message = implode("、", array_merge($reviewMessages, $photoMessages, $postMessages)) . "。";
-            if (!empty($errors)) {
-                $message .= " エラー: " . implode(', ', $errors);
-            }
-            
-            // オペレーターの場合はオペレーター用ルートにリダイレクト
-            $routeName = $operatorId ? 'operator.schedule' : 'shops.schedule';
-            
-            return redirect()->route($routeName, [
-                'year' => $request->get('year', now()->year),
-                'month' => $request->get('month', now()->month),
-            ])->with($errors ? 'warning' : 'success', $message);
-    }
+Bus::batch($jobs)->dispatch();
+
+$routeName = $operatorId ? 'operator.schedule' : 'shops.schedule';
+
+return redirect()->route($routeName, [
+    'year' => $request->get('year', now()->year),
+    'month' => $request->get('month', now()->month),
+])->with('success', "{$shopCount}店舗の同期処理を開始しました。バックグラウンドで実行されます。")
+  ->with('sync_batch_id', $syncBatch->id);
+}
+
+
+
 
     /**
      * 口コミを同期（ReviewSyncServiceを使用）

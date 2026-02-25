@@ -1075,5 +1075,84 @@ if ($user) {
                 ->with('error', 'Google APIへの返信送信に失敗しました。ログを確認してください。');
         }
     }
-}
 
+
+public function syncBatch(Request $request)
+{
+    Log::info('SYNC_REVIEWS_PATH', ['path' => 'ReviewsController@syncBatch']);
+
+    $shopId = $request->input('shop_id');
+    $sinceDate = $request->input('since_date') ?? now()->subMonths(2)->format('Y-m-d');
+
+    $user = Auth::user();
+    $operatorId = ($user && $user->is_admin) ? null : session('operator_id');
+
+    $today = \Carbon\Carbon::today();
+
+    if ($shopId === 'all') {
+        $shopQuery = \App\Models\Shop::whereNotNull('gbp_location_id')
+            ->whereNotNull('gbp_refresh_token')
+            ->where(function ($query) use ($today) {
+                $query->whereNull('contract_end_date')
+                      ->orWhere('contract_end_date', '>=', $today);
+            });
+
+        if ($user && $user->customer_scope === 'own') {
+            $shopQuery->where('created_by', $user->id);
+        }
+
+        if ($operatorId) {
+            $shopQuery->where('operation_person_id', $operatorId);
+        }
+
+        $shops = $shopQuery->get();
+    } else {
+        $shop = \App\Models\Shop::whereNotNull('gbp_location_id')
+            ->whereNotNull('gbp_refresh_token')
+            ->where('id', $shopId)
+            ->firstOrFail();
+
+        $shops = collect([$shop]);
+    }
+
+    if ($shops->isEmpty()) {
+        return redirect()->back()->with('error', '同期対象の店舗がありません。');
+    }
+
+    $jobs = [];
+
+    foreach ($shops as $shop) {
+
+        if (!$user->is_admin && $operatorId !== null) {
+
+            $isAssigned = \App\Models\OperatorShop::where('operator_id', $operatorId)
+                ->where('shop_id', $shop->id)
+                ->exists();
+
+            if (!$isAssigned && $shop->operation_person_id != $operatorId) {
+                continue;
+            }
+        }
+
+        $jobs[] = new \App\Jobs\SyncShopDataJob(
+            $shop->id,
+            $sinceDate,
+            $operatorId,
+            null,
+            null,
+            null
+        );
+    }
+
+    if (empty($jobs)) {
+        return redirect()->back()->with('error', '同期できる店舗がありません。');
+    }
+
+    \Illuminate\Support\Facades\Bus::batch($jobs)->dispatch();
+
+    $routeName = $operatorId ? 'operator.reviews.index' : 'reviews.index';
+
+    return redirect()->route($routeName)
+        ->with('success', '口コミ同期をバックグラウンドで開始しました。');
+}
+}
