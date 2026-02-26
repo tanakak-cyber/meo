@@ -1435,7 +1435,7 @@ if ($user) {
         $shopId = $request->input('shop_id');
         $startDate = $request->input('start_date');
         $endDate = $request->input('end_date');
-        $sinceDate = $request->input('since_date') ?? now()->subMonths(2)->format('Y-m-d');
+        $sinceDate = $request->input('since_date') ?? now()->subDays(14)->format('Y-m-d');
         $today = Carbon::today();
         
         // 日付が指定された場合はセッションに保存（次回まで保持）
