@@ -266,7 +266,10 @@ if ($user) {
         }
 
         // 投稿日時が最近順（降順）で並び替え
-        $reviews = $query->orderBy('create_time', 'desc')->paginate(20);
+        $reviews = $query
+    ->orderBy('create_time', 'desc')
+    ->paginate(20)
+    ->appends($request->query());
 
         // ビューに渡す日付（リクエストパラメータがあればそのまま、なければ空文字列）
         // リセットボタンで日付を空にするため、リクエストパラメータがない場合は空文字列を返す
