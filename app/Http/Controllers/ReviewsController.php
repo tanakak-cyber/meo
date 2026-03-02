@@ -1158,4 +1158,12 @@ public function syncBatch(Request $request)
     return redirect()->route($routeName)
         ->with('success', '口コミ同期をバックグラウンドで開始しました。');
 }
+
+public function markProcessed(Review $review)
+{
+    $review->manual_status = 'processed';
+    $review->save();
+
+    return back()->with('success', '処理済みにしました');
+}
 }

@@ -302,23 +302,32 @@
                                                 <span class="truncate block">{{ Str::limit($review->comment ?? '（本文なし）', 50) }}</span>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                @if($review->isReplied())
-                                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
-                                                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                                                        </svg>
-                                                        返信済
-                                                    </span>
-                                                @else
-                                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-600 text-white">
-                                                        未返信
-                                                    </span>
-                                                @endif
+                                                
+@if(($review->manual_status ?? null) === 'processed')
+    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-400 text-white">
+        処理済み
+    </span>
+@elseif($review->isReplied())
+    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
+        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+        </svg>
+        返信済
+    </span>
+@else
+    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-600 text-white">
+        未返信
+    </span>
+@endif
+
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                <a href="{{ session('operator_id') ? route('operator.reviews.show', $review) : route('reviews.show', $review) }}" class="inline-flex items-center justify-center px-4 py-2 bg-gradient-to-r from-[#00afcc] to-[#0088a3] text-white text-sm font-semibold rounded-lg hover:from-[#0088a3] hover:to-[#006b7f] transition-all duration-200 shadow-sm hover:shadow">
-                                                    詳細
-                                                </a>
+                                                <a href="{{ 
+    (session('operator_id') 
+        ? route('operator.reviews.show', $review) 
+        : route('reviews.show', $review)
+    ) . (request()->getQueryString() ? '?' . request()->getQueryString() : '')
+}}" class="inline-flex items-center justify-center px-4 py-2 bg-gradient-to-r from-[#00afcc] to-[#0088a3] text-white text-sm font-semibold rounded-lg hover:from-[#0088a3] hover:to-[#006b7f] transition-all duration-200 shadow-sm hover:shadow">詳細を見る</a>
                                             </td>
                                         </tr>
                                     @endforeach

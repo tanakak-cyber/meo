@@ -4,9 +4,15 @@
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
                 {{ __('口コミ詳細') }}
             </h2>
-            <a href="{{ session('operator_id') ? route('operator.reviews.index') : route('reviews.index') }}" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
-                一覧に戻る
-            </a>
+            <a href="{{ 
+    (session('operator_id') 
+        ? route('operator.reviews.index') 
+        : route('reviews.index')
+    ) 
+    . (request()->getQueryString() ? '?' . request()->getQueryString() : '')
+}}" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+    一覧に戻る
+</a>
         </div>
     </x-slot>
 
@@ -96,6 +102,36 @@
                 </div>
             </div>
 
+
+
+
+@if(!$review->isReplied())
+    @if(($review->manual_status ?? null) !== 'processed')
+        <div class="flex justify-end mb-4">
+            <form method="POST" action="{{ route('reviews.markProcessed', $review) }}">
+                @csrf
+                <button type="submit"
+                    class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                    onclick="return confirm('このレビューを処理済みにしますか？');"
+                >
+                    処理済みにする
+                </button>
+            </form>
+        </div>
+    @else
+        <div class="flex justify-end mb-4">
+            <span class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md">
+                処理済み
+            </span>
+        </div>
+    @endif
+@endif
+
+
+
+
+
+
             <!-- 返信フォーム -->
             @if(!$review->isReplied())
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
@@ -137,15 +173,23 @@
                                     <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                 @enderror
                             </div>
-                            <div class="flex items-center justify-end">
-                                <button 
-                                    type="submit" 
-                                    class="px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                                    onclick="return confirm('返信を送信しますか？')"
-                                >
-                                    返信を送信
-                                </button>
-                            </div>
+                            
+
+
+<div class="flex items-center justify-end space-x-2">
+    {{-- 返信を送信ボタン --}}
+    <button
+        type="submit"
+        class="px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        onclick="return confirm('返信を送信しますか？')"
+    >
+        返信を送信
+    </button>
+
+</div>
+
+
+
                         </form>
                     </div>
                 </div>

@@ -43,57 +43,11 @@
                                 期間を変更
                             </button>
                         </div>
-                    </form>
+                </form>
                 </div>
             </div>
 
-            <!-- 口コミ・写真・投稿同期 -->
-            @if($shop->gbp_location_id)
-                <div class="bg-white rounded-xl shadow-md border border-gray-100 mb-6 overflow-hidden">
-                    <div class="bg-gradient-to-r from-[#00afcc] to-[#0088a3] px-6 py-4">
-                        <div class="flex items-center">
-                            <div class="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center mr-3">
-                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                                </svg>
-                            </div>
-                            <h3 class="text-lg font-bold text-white">口コミ・写真・投稿同期</h3>
-                        </div>
-                    </div>
-                    <div class="p-6">
-                        <form method="POST" action="{{ session('operator_id') ? route('operator.reports.sync', $shop->id) : route('reports.sync', $shop->id) }}" class="flex flex-col lg:flex-row lg:items-end gap-4" onsubmit="return confirm('口コミ・写真・投稿を同期しますか？');">
-                            @csrf
-                            <input type="hidden" name="from" value="{{ $from }}">
-                            <input type="hidden" name="to" value="{{ $to }}">
-                            @if(!session('operator_id'))
-                            <div class="flex-1">
-                                <label for="sync_operation_person_id" class="block text-sm font-semibold text-gray-700 mb-2">オペレーション担当（任意）</label>
-                                <select name="operation_person_id" id="sync_operation_person_id" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-[#00afcc] focus:border-[#00afcc] transition-all">
-                                    <option value="">すべて</option>
-                                    @foreach($operationPersons ?? [] as $op)
-                                        <option value="{{ $op->id }}" {{ old('operation_person_id') == $op->id ? 'selected' : '' }}>{{ $op->name }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            @endif
-                            <div class="flex-1">
-                                <label for="sync_since_date" class="block text-sm font-semibold text-gray-700 mb-2">〇月〇日以降のみ同期</label>
-                                <input type="date" name="since_date" id="sync_since_date" value="{{ old('since_date', now()->subMonths(2)->format('Y-m-d')) }}" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-[#00afcc] focus:border-[#00afcc] transition-all">
-                            </div>
-                            <div class="flex-shrink-0">
-                                <button type="submit" class="w-full lg:w-auto px-6 py-2.5 bg-gradient-to-r from-[#00afcc] to-[#0088a3] text-white font-semibold rounded-lg hover:from-[#0088a3] hover:to-[#006b7f] transition-all duration-200 shadow-md hover:shadow-lg whitespace-nowrap">
-                                    <span class="flex items-center justify-center">
-                                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                                        </svg>
-                                        口コミ・写真・投稿を同期
-                                    </span>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            @endif
+
 
             <!-- ① キーワード順位 折れ線グラフ -->
             @if($keywords->count() > 0)

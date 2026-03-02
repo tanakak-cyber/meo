@@ -99,12 +99,17 @@ Route::middleware(['auth', 'admin.only'])->group(function () {
         // ユニークな口コミ総数
         $reviewCount = $latestReviewIds->count();
         
-        // ユニークな未返信口コミ数
+        // ユニークな未返信口コミ数(処理済みは除外)
         $unrepliedReviewCount = \App\Models\Review::whereIn('id', $latestReviewIds)
-            ->where(function ($q) {
-                $q->whereNull('reply_text')->orWhereNull('replied_at');
-            })
-            ->count();
+    ->where(function ($q) {
+        $q->whereNull('reply_text')
+          ->orWhereNull('replied_at');
+    })
+    ->where(function ($q) {
+        $q->whereNull('manual_status')
+          ->orWhere('manual_status', '!=', 'processed');
+    })
+    ->count();
         
         return view('dashboard', compact('shopCount', 'reviewCount', 'unrepliedReviewCount'));
     })->middleware('admin.permission:dashboard')->name('dashboard');
@@ -236,3 +241,7 @@ Route::middleware(['auth', 'admin.only'])->group(function () {
 Route::get('/route-test', function () {
     return 'ROUTE OK';
 });
+
+
+Route::post('/reviews/{review}/processed', [\App\Http\Controllers\ReviewsController::class, 'markProcessed'])
+    ->name('reviews.markProcessed');
